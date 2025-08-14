@@ -5,7 +5,6 @@ const TelegramBot = require('node-telegram-bot-api');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Твой Telegram токен и chat_id через переменные окружения
 const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN;
 const CHAT_ID = process.env.CHAT_ID;
 const bot = new TelegramBot(TELEGRAM_TOKEN);
@@ -15,32 +14,56 @@ const coins = ["BNBUSDC","BTCUSDC","ETHUSDC","LINKUSDC","AVAXUSDC","DOTUSDC","TO
 
 // Пороговые значения индикаторов
 const thresholds = {
-  RSI: { min: 0, max: 30 },
-  BB: { max: 0.2 }
+  RSI: 30,
+  BB: 0.2
 };
 
-// Функция проверки индикаторов (пример)
+// Функция вычисления RSI
+function calculateRSI(closes, period = 14) {
+  let gains = 0, losses = 0;
+  for (let i = 1; i <= period; i++) {
+    const diff = closes[i] - closes[i - 1];
+    if (diff > 0) gains += diff;
+    else losses -= diff; // отрицательное число
+  }
+  const avgGain = gains / period;
+  const avgLoss = losses / period;
+  const rs = avgGain / avgLoss || 0;
+  return 100 - (100 / (1 + rs));
+}
+
+// Функция вычисления BB%
+function calculateBBPercent(closes) {
+  const len = closes.length;
+  const mean = closes.reduce((a,b)=>a+b,0)/len;
+  const variance = closes.reduce((a,b)=>a + Math.pow(b - mean,2),0)/len;
+  const std = Math.sqrt(variance);
+  const upper = mean + 2*std;
+  const lower = mean - 2*std;
+  const last = closes[closes.length -1];
+  return (last - lower)/(upper - lower);
+}
+
+// Основная проверка
 async function checkIndicators() {
   const now = new Date();
-  const timeStr = now.toLocaleString("ru-RU", { timeZone: "Europe/Moscow" }); // UTC+2
+  const timeStr = now.toLocaleString("ru-RU", { timeZone: "Europe/Moscow" });
+
   for (const coin of coins) {
     try {
-      // Здесь вставляешь свой код для получения данных с Binance
-      // Пример запроса к Binance API
-      const response = await axios.get(`https://api.binance.com/api/v3/ticker/price?symbol=${coin}`);
-      const price = parseFloat(response.data.price);
+      const response = await axios.get(`https://api.binance.com/api/v3/klines?symbol=${coin}&interval=5m&limit=20`);
+      const closes = response.data.map(c => parseFloat(c[4])); // Закрытие свечи
 
-      // Здесь твоя логика по индикаторам, пример:
-      const rsi = Math.random() * 100;   // заглушка
-      const bbPercent = Math.random();    // заглушка
+      const rsi = calculateRSI(closes);
+      const bbPercent = calculateBBPercent(closes);
 
-      const signal =
-        rsi >= thresholds.RSI.min && rsi <= thresholds.RSI.max &&
-        bbPercent <= thresholds.BB.max;
+      const signal = rsi <= thresholds.RSI && bbPercent <= thresholds.BB;
+
+      console.log(`${coin} | RSI: ${rsi.toFixed(2)}, BB%: ${bbPercent.toFixed(2)}, Signal: ${signal}`);
 
       if (signal) {
+        const price = closes[closes.length - 1];
         const msg = `Монета: ${coin}\nСигнал сработал: ${timeStr}\nКурс: ${price.toFixed(2)}`;
-        console.log(msg);
         await bot.sendMessage(CHAT_ID, msg);
       }
 
