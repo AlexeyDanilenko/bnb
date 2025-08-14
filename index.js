@@ -7,11 +7,12 @@ const PORT = process.env.PORT || 3000;
 
 const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN;
 const CHAT_ID = process.env.CHAT_ID;
-const bot = new TelegramBot(TELEGRAM_TOKEN);
+
+// Создаём бота с включенным polling
+const bot = new TelegramBot(TELEGRAM_TOKEN, { polling: true });
 
 // Отправляем сообщение при запуске
-bot.sendMessage(process.env.TG_CHAT_ID, 'Начинаем работу!').catch(console.error);
-
+bot.sendMessage(CHAT_ID, 'Начинаем работу!').catch(console.error);
 
 // Монеты для отслеживания
 const coins = ["BNBUSDC","BTCUSDC","ETHUSDC","LINKUSDC","AVAXUSDC","DOTUSDC","TONUSDC","SOLUSDC","SUIUSDC"];
@@ -24,20 +25,24 @@ const thresholds = {
 
 // Функция вычисления RSI
 function calculateRSI(closes, period = 14) {
+  if (closes.length < period + 1) return null;
+
   let gains = 0, losses = 0;
   for (let i = 1; i <= period; i++) {
     const diff = closes[i] - closes[i - 1];
     if (diff > 0) gains += diff;
-    else losses -= diff; // отрицательное число
+    else losses += Math.abs(diff);
   }
   const avgGain = gains / period;
   const avgLoss = losses / period;
-  const rs = avgGain / avgLoss || 0;
+  const rs = avgLoss === 0 ? 100 : avgGain / avgLoss; // защита от деления на 0
   return 100 - (100 / (1 + rs));
 }
 
 // Функция вычисления BB%
 function calculateBBPercent(closes) {
+  if (closes.length === 0) return null;
+
   const len = closes.length;
   const mean = closes.reduce((a,b)=>a+b,0)/len;
   const variance = closes.reduce((a,b)=>a + Math.pow(b - mean,2),0)/len;
@@ -58,8 +63,18 @@ async function checkIndicators() {
       const response = await axios.get(`https://api.binance.com/api/v3/klines?symbol=${coin}&interval=5m&limit=20`);
       const closes = response.data.map(c => parseFloat(c[4])); // Закрытие свечи
 
+      if (!closes || closes.length < 2) {
+        console.warn(`Недостаточно данных для ${coin}, пропускаем`);
+        continue;
+      }
+
       const rsi = calculateRSI(closes);
       const bbPercent = calculateBBPercent(closes);
+
+      if (rsi === null || bbPercent === null) {
+        console.warn(`Ошибка расчёта индикаторов для ${coin}, пропускаем`);
+        continue;
+      }
 
       const signal = rsi <= thresholds.RSI && bbPercent <= thresholds.BB;
 
