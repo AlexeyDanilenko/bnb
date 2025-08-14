@@ -5,7 +5,7 @@ const TelegramBot = require('node-telegram-bot-api');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// ⚠️ Токен бота должен быть в переменных окружения или локально, не публикуй его в репо
+// ⚠️ Токен бота должен быть в переменных окружения
 const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN;
 
 // Прямо прописанный chat ID
@@ -25,6 +25,9 @@ const thresholds = {
   RSI: 32,
   BB: 0.2
 };
+
+// Храним последние цены срабатывания сигналов
+const lastSignalPrices = {};
 
 // Функция вычисления RSI
 function calculateRSI(closes, period = 14) {
@@ -79,12 +82,25 @@ async function checkIndicators() {
         continue;
       }
 
+      const price = closes[closes.length - 1];
       const signal = rsi <= thresholds.RSI && bbPercent <= thresholds.BB;
 
-      console.log(`${coin} | RSI: ${rsi.toFixed(2)}, BB%: ${bbPercent.toFixed(2)}, Signal: ${signal}`);
+      console.log(`${coin} | Цена: ${price.toFixed(2)}, RSI: ${rsi.toFixed(2)}, BB%: ${bbPercent.toFixed(2)}, Signal: ${signal}`);
 
       if (signal) {
-        const price = closes[closes.length - 1];
+        // Проверяем, был ли сигнал ранее и упала ли цена на 1%
+        const lastPrice = lastSignalPrices[coin];
+        if (lastPrice) {
+          const dropPercent = ((lastPrice - price) / lastPrice) * 100;
+          if (dropPercent < 1) {
+            console.log(`⏩ ${coin}: сигнал был недавно при ${lastPrice}, падение только ${dropPercent.toFixed(2)}% — не отправляем`);
+            continue;
+          }
+        }
+
+        // Запоминаем цену текущего сигнала
+        lastSignalPrices[coin] = price;
+
         const msg = `Монета: ${coin}\nСигнал сработал: ${timeStr}\nКурс: ${price.toFixed(2)}`;
         await bot.sendMessage(CHAT_ID, msg);
       }
