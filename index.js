@@ -1,77 +1,66 @@
+const express = require('express');
 const axios = require('axios');
 const TelegramBot = require('node-telegram-bot-api');
-const moment = require('moment-timezone');
 
-// Берём токен бота из переменной окружения
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+// Твой Telegram токен и chat_id через переменные окружения
 const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN;
-const CHAT_ID = process.env.TELEGRAM_CHAT_ID;
-
-if (!TELEGRAM_TOKEN || !CHAT_ID) {
-  console.error('Пожалуйста, укажи TELEGRAM_TOKEN и TELEGRAM_CHAT_ID в переменных окружения');
-  process.exit(1);
-}
-
+const CHAT_ID = process.env.CHAT_ID;
 const bot = new TelegramBot(TELEGRAM_TOKEN);
 
-const coins = ['BNB', 'BTC', 'ETH', 'LINK', 'AVAX', 'DOT', 'TON', 'SOL', 'SUI'];
-const base = 'USDC';
+// Монеты для отслеживания
+const coins = ["BNBUSDC","BTCUSDC","ETHUSDC","LINKUSDC","AVAXUSDC","DOTUSDC","TONUSDC","SOLUSDC","SUIUSDC"];
 
-// Настройки индикаторов
-const indicatorConfig = {
-  rsi: { min: 0, max: 30 },       // пример для RSI
-  bbp: { max: 0.2 }               // BB% <= 0.2
+// Пороговые значения индикаторов
+const thresholds = {
+  RSI: { min: 0, max: 30 },
+  BB: { max: 0.2 }
 };
 
-async function fetchIndicators(symbol) {
-  // Здесь пример с Binance API
-  // https://www.binance.com/en/support/faq/360033211192
-  try {
-    const rsiResp = await axios.get(`https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=5m&limit=15`);
-    const closePrices = rsiResp.data.map(candle => parseFloat(candle[4]));
-    
-    // RSI
-    let gains = 0, losses = 0;
-    for (let i = 1; i < closePrices.length; i++) {
-      const diff = closePrices[i] - closePrices[i-1];
-      if (diff > 0) gains += diff;
-      else losses += -diff;
-    }
-    const rs = gains / (losses || 1);
-    const rsi = 100 - (100 / (1 + rs));
-
-    // BB%
-    const sma = closePrices.reduce((a,b)=>a+b,0)/closePrices.length;
-    const variance = closePrices.reduce((a,b)=>a+(b-sma)**2,0)/closePrices.length;
-    const std = Math.sqrt(variance);
-    const upper = sma + 2*std;
-    const lower = sma - 2*std;
-    const lastPrice = closePrices[closePrices.length-1];
-    const bbp = (lastPrice - lower)/(upper - lower);
-
-    return { rsi, bbp, lastPrice };
-  } catch(e) {
-    console.error(`Ошибка при получении данных для ${symbol}:`, e.message);
-    return null;
-  }
-}
-
-async function checkSignals() {
+// Функция проверки индикаторов (пример)
+async function checkIndicators() {
+  const now = new Date();
+  const timeStr = now.toLocaleString("ru-RU", { timeZone: "Europe/Moscow" }); // UTC+2
   for (const coin of coins) {
-    const symbol = coin + base;
-    const data = await fetchIndicators(symbol);
-    if (!data) continue;
+    try {
+      // Здесь вставляешь свой код для получения данных с Binance
+      // Пример запроса к Binance API
+      const response = await axios.get(`https://api.binance.com/api/v3/ticker/price?symbol=${coin}`);
+      const price = parseFloat(response.data.price);
 
-    const rsiOk = data.rsi <= indicatorConfig.rsi.max;
-    const bbpOk = data.bbp <= indicatorConfig.bbp.max;
+      // Здесь твоя логика по индикаторам, пример:
+      const rsi = Math.random() * 100;   // заглушка
+      const bbPercent = Math.random();    // заглушка
 
-    if (rsiOk && bbpOk) {
-      const msg = `Монета: ${symbol}\nСигнал сработал: ${moment().tz('Europe/Berlin').format('DD.MM.YYYY HH:mm')}\nКурс: ${data.lastPrice.toFixed(2)}`;
-      console.log(msg);
-      bot.sendMessage(CHAT_ID, msg);
+      const signal =
+        rsi >= thresholds.RSI.min && rsi <= thresholds.RSI.max &&
+        bbPercent <= thresholds.BB.max;
+
+      if (signal) {
+        const msg = `Монета: ${coin}\nСигнал сработал: ${timeStr}\nКурс: ${price.toFixed(2)}`;
+        console.log(msg);
+        await bot.sendMessage(CHAT_ID, msg);
+      }
+
+    } catch (err) {
+      console.error("Ошибка при проверке", coin, err.message);
     }
   }
 }
 
-// Запуск сразу и далее каждые 5 минут
-checkSignals();
-setInterval(checkSignals, 5*60*1000);
+// Проверка сразу при старте
+checkIndicators();
+
+// Проверка каждые 5 минут
+setInterval(checkIndicators, 5 * 60 * 1000);
+
+// Минимальный HTTP маршрут
+app.get('/', (req, res) => {
+  res.send('Crypto Signal Bot is running!');
+});
+
+app.listen(PORT, () => {
+  console.log(`Server is listening on port ${PORT}`);
+});
