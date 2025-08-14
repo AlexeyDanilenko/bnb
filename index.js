@@ -9,12 +9,16 @@ const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN;
 const CHAT_ID = process.env.CHAT_ID;
 const bot = new TelegramBot(TELEGRAM_TOKEN);
 
+// Отправляем сообщение при запуске
+bot.sendMessage(process.env.TG_CHAT_ID, 'Начинаем работу!').catch(console.error);
+
+
 // Монеты для отслеживания
 const coins = ["BNBUSDC","BTCUSDC","ETHUSDC","LINKUSDC","AVAXUSDC","DOTUSDC","TONUSDC","SOLUSDC","SUIUSDC"];
 
 // Пороговые значения индикаторов
 const thresholds = {
-  RSI: 30,
+  RSI: 32,
   BB: 0.2
 };
 
