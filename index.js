@@ -5,8 +5,11 @@ const TelegramBot = require('node-telegram-bot-api');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// ⚠️ Токен бота должен быть в переменных окружения или локально, не публикуй его в репо
 const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN;
-const CHAT_ID = process.env.CHAT_ID;
+
+// Прямо прописанный chat ID
+const CHAT_ID = 235189880;
 
 // Создаём бота с включенным polling
 const bot = new TelegramBot(TELEGRAM_TOKEN, { polling: true });
@@ -35,7 +38,7 @@ function calculateRSI(closes, period = 14) {
   }
   const avgGain = gains / period;
   const avgLoss = losses / period;
-  const rs = avgLoss === 0 ? 100 : avgGain / avgLoss; // защита от деления на 0
+  const rs = avgLoss === 0 ? 100 : avgGain / avgLoss;
   return 100 - (100 / (1 + rs));
 }
 
@@ -61,7 +64,7 @@ async function checkIndicators() {
   for (const coin of coins) {
     try {
       const response = await axios.get(`https://api.binance.com/api/v3/klines?symbol=${coin}&interval=5m&limit=20`);
-      const closes = response.data.map(c => parseFloat(c[4])); // Закрытие свечи
+      const closes = response.data.map(c => parseFloat(c[4])); 
 
       if (!closes || closes.length < 2) {
         console.warn(`Недостаточно данных для ${coin}, пропускаем`);
