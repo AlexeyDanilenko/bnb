@@ -5,17 +5,25 @@ const TelegramBot = require('node-telegram-bot-api');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// ⚠️ Токен бота должен быть в переменных окружения
+// Токен бота должен быть в переменных окружения
 const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN;
 
 // Прямо прописанный chat ID
 const CHAT_ID = 235189880;
 
-// Создаём бота с включенным polling
-const bot = new TelegramBot(TELEGRAM_TOKEN, { polling: true });
+// Бот без polling
+const bot = new TelegramBot(TELEGRAM_TOKEN);
 
-// Отправляем сообщение при запуске
-bot.sendMessage(CHAT_ID, 'Начинаем работу!').catch(console.error);
+// Настраиваем webhook
+const BASE_URL = 'https://monitoring-bnb-i-pr.onrender.com'; // Замени на свой URL
+bot.setWebHook(`${BASE_URL}/bot${TELEGRAM_TOKEN}`);
+
+// Парсим входящие POST-запросы от Telegram
+app.use(express.json());
+app.post(`/bot${TELEGRAM_TOKEN}`, (req, res) => {
+  bot.processUpdate(req.body);
+  res.sendStatus(200);
+});
 
 // Монеты для отслеживания
 const coins = ["BNBUSDC","BTCUSDC","ETHUSDC","LINKUSDC","AVAXUSDC","DOTUSDC","TONUSDC","SOLUSDC","SUIUSDC"];
@@ -26,8 +34,8 @@ const thresholds = {
   BB: 0.2
 };
 
-// Храним последние цены срабатывания сигналов
-const lastSignalPrices = {};
+// Хранилище цен для проверки 1% падения
+const lastSignalPrice = {};
 
 // Функция вычисления RSI
 function calculateRSI(closes, period = 14) {
@@ -85,24 +93,21 @@ async function checkIndicators() {
       const price = closes[closes.length - 1];
       const signal = rsi <= thresholds.RSI && bbPercent <= thresholds.BB;
 
+      // Проверка 1% от последнего сигнала
+      if (signal && lastSignalPrice[coin]) {
+        const minPrice = lastSignalPrice[coin] * 0.99;
+        if (price > minPrice) {
+          console.log(`${coin} | Сигнал заблокирован из-за 1% правила, текущая цена: ${price.toFixed(2)}`);
+          continue;
+        }
+      }
+
       console.log(`${coin} | Цена: ${price.toFixed(2)}, RSI: ${rsi.toFixed(2)}, BB%: ${bbPercent.toFixed(2)}, Signal: ${signal}`);
 
       if (signal) {
-        // Проверяем, был ли сигнал ранее и упала ли цена на 1%
-        const lastPrice = lastSignalPrices[coin];
-        if (lastPrice) {
-          const dropPercent = ((lastPrice - price) / lastPrice) * 100;
-          if (dropPercent < 1) {
-            console.log(`⏩ ${coin}: сигнал был недавно при ${lastPrice}, падение только ${dropPercent.toFixed(2)}% — не отправляем`);
-            continue;
-          }
-        }
-
-        // Запоминаем цену текущего сигнала
-        lastSignalPrices[coin] = price;
-
         const msg = `Монета: ${coin}\nСигнал сработал: ${timeStr}\nКурс: ${price.toFixed(2)}`;
         await bot.sendMessage(CHAT_ID, msg);
+        lastSignalPrice[coin] = price; // сохраняем цену сигнала
       }
 
     } catch (err) {
